@@ -1,4 +1,4 @@
-"""The training process's platform: what differs between CUDA and TPU (torch_tpu), chosen once by MILES_ACCELERATOR.
+"""The training process's platform: CUDA (SAIL when /dev/alixpu is present) or TPU (torch_tpu), chosen once by MILES_ACCELERATOR.
 
 Everything `torch.accelerator` covers (synchronize, empty_cache, memory stats, the device index) is called directly.
 """
@@ -49,9 +49,18 @@ class Platform:
         return torch.cuda.get_device_name() if torch.cuda.is_available() else None
 
 
+def _is_sail() -> bool:
+    """SAIL masquerades as CUDA (torch.cuda, PCCL as "nccl"); only its device node tells it apart."""
+    return os.path.exists("/dev/alixpu")
+
+
 def _select_platform() -> Platform:
     device_type = os.environ.get("MILES_ACCELERATOR", "cuda")
     if device_type == "cuda":
+        if _is_sail():
+            from miles.platforms.sail import SailPlatform
+
+            return SailPlatform()
         return Platform()
     if device_type == "tpu":
         # imports torch_tpu, which CUDA processes never load
