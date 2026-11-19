@@ -1,4 +1,4 @@
-"""The training process's platform: what differs between CUDA and TPU (torch_tpu), chosen once by MILES_ACCELERATOR.
+"""The training process's platform: CUDA, TPU (torch_tpu) or T-HEAD SAIL, chosen once by MILES_ACCELERATOR.
 
 Everything `torch.accelerator` covers (synchronize, empty_cache, memory stats, the device index) is called directly.
 """
@@ -49,8 +49,17 @@ class Platform:
         return torch.cuda.get_device_name() if torch.cuda.is_available() else None
 
 
+def _is_sail() -> bool:
+    """SAIL (Zhenwu PPU) masquerades as CUDA (torch.cuda, PCCL as "nccl"); only its device node tells it apart."""
+    return os.path.exists("/dev/alixpu")
+
+
 def _select_platform() -> Platform:
     device_type = os.environ.get("MILES_ACCELERATOR", "cuda")
+    if device_type == "sail" or (device_type == "cuda" and _is_sail()):
+        from miles.platforms.sail import SailPlatform
+
+        return SailPlatform()
     if device_type == "cuda":
         return Platform()
     if device_type == "tpu":
@@ -58,7 +67,7 @@ def _select_platform() -> Platform:
         from miles.platforms.tpu import TpuPlatform
 
         return TpuPlatform()
-    raise ValueError(f"MILES_ACCELERATOR={device_type!r}; expected cuda or tpu")
+    raise ValueError(f"MILES_ACCELERATOR={device_type!r}; expected cuda, tpu or sail")
 
 
 current_platform = _select_platform()
